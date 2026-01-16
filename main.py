@@ -273,7 +273,7 @@ def call_youtubei_success_route(endpoint, id):
 @app.get("/api/youtubei/")
 async def youtubei_api(
     type: str = Query(..., description="video, channel, comment, search, home, 関連"),
-    id: str = Query(None),
+    id: str = Query(...),# description="動画IDまたはチャンネルID"), #,
     q: str = Query(None)
 ):
     print(f"routing_type:{type}")
