@@ -241,7 +241,7 @@ def call_youtubei_success_route(endpoint, id):
         "X-Real-Ip": "27.121.41.19"
     }
     print(f"headers_used:{headers}")
-
+    id = "I-5GnMD26a4"
     # 成功例に基づいた最小限のコンテキスト
     payload = {"context":{"client":{"clientName":"WEB","clientVersion":"2.20250721.00.00"}},"videoId": id}
 
