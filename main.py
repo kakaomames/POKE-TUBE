@@ -243,7 +243,7 @@ def call_youtubei_success_route(endpoint, id):
     print(f"headers_used:{headers}")
 
     # 成功例に基づいた最小限のコンテキスト
-    payload = {"context":{"client":{"clientName":"WEB","clientVersion":"2.20250721.00.00"}},"videoId":"id"}
+    payload = {"context":{"client":{"clientName":"WEB","clientVersion":"2.20250721.00.00"}},"videoId": id}
 
     print(f"final_payload:{payload}")
 
