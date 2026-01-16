@@ -12,35 +12,7 @@ from cache import cache
 API_KEY = "AIzaSyCfLrK2FPzEZllvwhjmugZ8Bwvzp6GRVpU"  # 取得したAPIキーをここに入れる
 max_api_wait_time = 3
 max_time = 10
-apis = [r"https://iv.datura.network/",
-        r"https://invidious.private.coffee/",
-        r"https://invidious.protokolla.fi/",
-        r"https://invidious.perennialte.ch/",
-        r"https://yt.cdaut.de/",
-        r"https://invidious.materialio.us/",
-        r"https://yewtu.be/",
-        r"https://invidious.fdn.fr/",
-        r"https://inv.tux.pizza/",
-        r"https://invidious.privacyredirect.com/",
-        r"https://invidious.drgns.space/",
-        r"https://vid.puffyan.us",
-        r"https://invidious.jing.rocks/",
-        r"https://youtube.076.ne.jp/",
-        r"https://vid.puffyan.us/",
-        r"https://inv.riverside.rocks/",
-        r"https://invidio.xamh.de/",
-        r"https://y.com.sb/",
-        r"https://invidious.sethforprivacy.com/",
-        r"https://invidious.tiekoetter.com/",
-        r"https://inv.bp.projectsegfau.lt/",
-        r"https://inv.vern.cc/",
-        r"https://invidious.nerdvpn.de/",
-        r"https://inv.privacy.com.de/",
-        r"https://invidious.rhyshl.live/",
-        r"https://invidious.slipfox.xyz/",
-        r"https://invidious.weblibre.org/",
-        r"https://invidious.namazso.eu/",
-        r"https://invidious.jing.rocks"]
+apis = ["https://invidious.jing.rocks"]
 url = requests.get(r'https://raw.githubusercontent.com/mochidukiyukimi/yuki-youtube-instance/main/instance.txt').text.rstrip()
 version = "1.0"
 
@@ -396,3 +368,87 @@ def video(v: str, response: Response, request: Request):
         "proxy": None
     })
 
+from flask import Flask, request, jsonify
+import requests
+import json
+
+
+# --- YouTubei 突撃関数 ---
+def fetch_youtubei_data(video_id):
+    # 1. ターゲットURLの設定
+    url = "https://www.youtube.com/youtubei/v1/player"
+    print(f"url:{url}")
+
+    # 2. ヘッダーの構築（iOSアプリからのアクセスに擬装）
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "Origin": "https://www.youtube.com",
+        "Referer": "https://www.youtube.com/"
+    }
+    print(f"headers:{headers}")
+
+    # 3. ペイロードの構築
+    # YouTubeiが要求する最低限のコンテキスト情報だよ！
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "IOS",
+                "clientVersion": "19.29.1",
+                "deviceModel": "iPhone15,2",
+                "osName": "iOS",
+                "osVersion": "17.0.0",
+                "hl": "ja",
+                "gl": "JP"
+            }
+        },
+        "videoId": video_id
+    }
+    print(f"payload:{payload}")
+
+    try:
+        # 4. 運命のリクエスト実行
+        print(f"status:Fetching data for video_id {video_id}...")
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        status_code = response.status_code
+        print(f"status_code:{status_code}")
+
+        if status_code == 200:
+            result_data = response.json()
+            # 取得できたタイトルをデバッグ出力
+            video_details = result_data.get("videoDetails", {})
+            title = video_details.get("title", "Unknown Title")
+            print(f"video_title:{title}")
+            return result_data
+        else:
+            # 失敗した時のボディも確認できるようにしておくよ
+            error_body = response.text
+            print(f"error_body:{error_body}")
+            return {"error": "YouTubei API returned an error", "status": status_code}
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"exception:{error_msg}")
+        return {"error": error_msg}
+
+# --- 指定されたエンドポイント: /api/video/ ---
+@app.route('/api/video/', methods=['GET'])
+def get_video_info():
+    # クエリパラメータ 'id' から動画IDを取得
+    video_id = request.args.get('id')
+    print(f"requested_id:{video_id}")
+    
+    if not video_id:
+        print("status:Error - No video ID provided")
+        return jsonify({"error": "Missing 'id' parameter"}), 400
+    
+    # 実行！
+    data = fetch_youtubei_data(video_id)
+    
+    return jsonify(data)
+
+# ローカル環境でのテスト用
+if __name__ == '__main__':
+    print("status:Starting local Flask server...")
+    app.run(port=5000, debug=True)
