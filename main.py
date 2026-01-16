@@ -227,6 +227,20 @@ def call_youtubei_success_route(endpoint, payload_extra):
     # エンドポイントにkeyを付与
     url = f"{SUCCESS_URL_BASE}/{endpoint}?key={YOUTUBE_API_KEY}"
     print(f"target_url:{url}")
+    # --- 究極の変装ヘッダーセット ---
+    # ショートカット実行時のヘッダーを再現するよ！
+    headers = {
+        "User-Agent": "BackgroundShortcutRunner/3607.0.2 CFNetwork/3826.500.131 Darwin/24.5.0",
+        "Accept": "*/*",
+        "Accept-Language": "ja",
+        "Content-Type": "application/json",
+        "Origin": "https://www.youtube.com",
+        "Referer": "https://www.youtube.com/",
+        # Vercelであることを隠すために、あえて偽装用のIPヘッダーを上書き試行
+        "X-Forwarded-For": "27.121.41.19",
+        "X-Real-Ip": "27.121.41.19"
+    }
+    print(f"headers_used:{headers}")
 
     # 成功例に基づいた最小限のコンテキスト
     payload = {
@@ -243,7 +257,7 @@ def call_youtubei_success_route(endpoint, payload_extra):
     try:
         print(f"status:Launching POST request to {endpoint}...")
         # 成功例に従い、ヘッダーを極限まで削って突撃！
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
         
         status_code = response.status_code
         print(f"status_code:{status_code}")
