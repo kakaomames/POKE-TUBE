@@ -223,7 +223,7 @@ YOUTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 print(f"system:Using Success Route with Key: {YOUTUBE_API_KEY}")
 
 # --- 勝利の方程式リクエスト関数 ---
-def call_youtubei_success_route(endpoint, payload_extra):
+def call_youtubei_success_route(endpoint, id):
     # エンドポイントにkeyを付与
     url = f"{SUCCESS_URL_BASE}/{endpoint}?key={YOUTUBE_API_KEY}"
     print(f"target_url:{url}")
@@ -243,15 +243,8 @@ def call_youtubei_success_route(endpoint, payload_extra):
     print(f"headers_used:{headers}")
 
     # 成功例に基づいた最小限のコンテキスト
-    payload = {
-        "context": {
-            "client": {
-                "clientName": "WEB",
-                "clientVersion": "2.20210721.00.00"
-            }
-        }
-    }
-    payload.update(payload_extra)
+    payload = {"context":{"client":{"clientName":"WEB","clientVersion":"2.20250721.00.00"}},"videoId":"id"}
+
     print(f"final_payload:{payload}")
 
     try:
@@ -287,7 +280,7 @@ async def youtubei_api(
     
     if type == "video":
         # 動画詳細
-        return call_youtubei_success_route("player", {"videoId": id})
+        return call_youtubei_success_route("player", id)
 
     elif type == "channel":
         # チャンネル情報
