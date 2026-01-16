@@ -96,94 +96,6 @@ def apicommentsrequest(url):
             apicomments.remove(api)
     raise APItimeoutError("APIがタイムアウトしました")
 
-
-def get_info(request):
-    global version
-    return json.dumps([version,os.environ.get('RENDER_EXTERNAL_URL'),str(request.scope["headers"]),str(request.scope['router'])[39:-2]])
-    
-def get_data(videoid):
-    global logs
-    
-    # YouTube APIを使って動画データを取得
-    url = f"https://www.googleapis.com/youtube/v3/videos?id={videoid}&key={API_KEY}&part=snippet"
-    response = requests.get(url)
-    t = response.json()
-    
-    # 動画が見つからない場合のエラーチェック
-    if "items" not in t or len(t["items"]) == 0:
-        return {"error": "Video not found"}
-    
-    video_data = t["items"][0]["snippet"]
-    
-    # 必要な情報を抽出
-    title = video_data["title"]
-    author = video_data["channelTitle"]
-    author_id = video_data["channelId"]
-    author_thumbnails = video_data.get("thumbnails", {}).get("high", {}).get("url", "")
-    
-    # 関連動画情報を取得するためにsearch APIを使用
-    search_url = f"https://www.googleapis.com/youtube/v3/search?relatedToVideoId={videoid}&key={API_KEY}&type=video&part=snippet"
-    search_response = requests.get(search_url)
-    search_data = search_response.json()
-
-    recommended_videos = []
-    
-    # 関連動画の情報をリストに追加
-    for item in search_data.get("items", []):
-        related_video = item["snippet"]
-        recommended_videos.append({
-            "id": item["id"]["videoId"],
-            "title": related_video["title"],
-            "authorId": related_video["channelId"],
-            "author": related_video["channelTitle"]
-        })
-    
-    return {
-        "title": title,
-        "author": author,
-        "authorId": author_id,
-        "authorThumbnails": author_thumbnails,
-        "recommendedVideos": recommended_videos
-    }
-
-def get_search(q,page):
-    global logs
-    t = json.loads(apirequest(fr"api/v1/search?q={urllib.parse.quote(q)}&page={page}&hl=jp"))
-    def load_search(i):
-        if i["type"] == "video":
-            return {"title":i["title"],"id":i["videoId"],"authorId":i["authorId"],"author":i["author"],"length":str(datetime.timedelta(seconds=i["lengthSeconds"])),"published":i["publishedText"],"type":"video"}
-        elif i["type"] == "playlist":
-            return {"title":i["title"],"id":i["playlistId"],"thumbnail":i["videos"][0]["videoId"],"count":i["videoCount"],"type":"playlist"}
-        else:
-            if i["authorThumbnails"][-1]["url"].startswith("https"):
-                return {"author":i["author"],"id":i["authorId"],"thumbnail":i["authorThumbnails"][-1]["url"],"type":"channel"}
-            else:
-                return {"author":i["author"],"id":i["authorId"],"thumbnail":r"https://"+i["authorThumbnails"][-1]["url"],"type":"channel"}
-    return [load_search(i) for i in t]
-
-def get_channel(channelid):
-    global apichannels
-    t = json.loads(apichannelrequest(r"api/v1/channels/"+ urllib.parse.quote(channelid)))
-    if t["latestVideos"] == []:
-        print("APIがチャンネルを返しませんでした")
-        apichannels.append(apichannels[0])
-        apichannels.remove(apichannels[0])
-        raise APItimeoutError("APIがチャンネルを返しませんでした")
-    return [[{"title":i["title"],"id":i["videoId"],"authorId":t["authorId"],"author":t["author"],"published":i["publishedText"],"type":"video"} for i in t["latestVideos"]],{"channelname":t["author"],"channelicon":t["authorThumbnails"][-1]["url"],"channelprofile":t["descriptionHtml"]}]
-
-def get_playlist(listid,page):
-    t = json.loads(apirequest(r"/api/v1/playlists/"+ urllib.parse.quote(listid)+"?page="+urllib.parse.quote(page)))["videos"]
-    return [{"title":i["title"],"id":i["videoId"],"authorId":i["authorId"],"author":i["author"],"type":"video"} for i in t]
-
-def get_comments(videoid):
-    t = json.loads(apicommentsrequest(r"api/v1/comments/"+ urllib.parse.quote(videoid)+"?hl=jp"))["comments"]
-    return [{"author":i["author"],"authoricon":i["authorThumbnails"][-1]["url"],"authorid":i["authorId"],"body":i["contentHtml"].replace("\n","<br>")} for i in t]
-
-def get_replies(videoid,key):
-    t = json.loads(apicommentsrequest(fr"api/v1/comments/{videoid}?hmac_key={key}&hl=jp&format=html"))["contentHtml"]
-
-
-
 def check_cokie(cookie):
     if cookie == "True":
         return True
@@ -221,83 +133,10 @@ from fastapi.templating import Jinja2Templates
 template = Jinja2Templates(directory='templates').TemplateResponse
 
 
-
-
-
-@app.get("/", response_class=HTMLResponse)
-def home(response: Response,request: Request,yuki: Union[str] = Cookie(None)):
-    if check_cokie(yuki):
-        response.set_cookie("yuki","True",max_age=60 * 60 * 24 * 7)
-        return template("home.html",{"request": request})
-    return redirect("/blog")
-
-@app.route('/watch')
-def watch():
-    """動画情報を取得してvideolinkを代入"""
-    videoid = request.args.get('v')  # ?v=videoidの形式でvideoidを取得
-    if not videoid:
-        return "Error: videoid not provided", 400
-    # 取得した情報をテンプレートに渡してレンダリング
-    return render_template(
-        'video.html', 
-        videoid=videoid,
-        videotitle=video_data["title"],
-        author=video_data["author"],
-        authorid=video_data["authorId"],
-        authoricon=video_data["authorThumbnails"],
-        description=video_data["description"],
-        res=video_data["recommendedVideos"]
-        
-@app.get("/search", response_class=HTMLResponse,)
-def search(q:str,response: Response,request: Request,page:Union[int,None]=1,yuki: Union[str] = Cookie(None),proxy: Union[str] = Cookie(None)):
-    if not(check_cokie(yuki)):
-        return redirect("/")
-    response.set_cookie("yuki","True",max_age=60 * 60 * 24 * 7)
-    return template("search.html", {"request": request,"results":get_search(q,page),"word":q,"next":f"/search?q={q}&page={page + 1}","proxy":proxy})
-
-@app.get("/hashtag/{tag}")
-def search(tag:str,response: Response,request: Request,page:Union[int,None]=1,yuki: Union[str] = Cookie(None)):
-    if not(check_cokie(yuki)):
-        return redirect("/")
-    return redirect(f"/search?q={tag}")
-
-
-@app.get("/channel/{channelid}", response_class=HTMLResponse)
-def channel(channelid:str,response: Response,request: Request,yuki: Union[str] = Cookie(None),proxy: Union[str] = Cookie(None)):
-    if not(check_cokie(yuki)):
-        return redirect("/")
-    response.set_cookie("yuki","True",max_age=60 * 60 * 24 * 7)
-    t = get_channel(channelid)
-    return template("channel.html", {"request": request,"results":t[0],"channelname":t[1]["channelname"],"channelicon":t[1]["channelicon"],"channelprofile":t[1]["channelprofile"],"proxy":proxy})
-
-@app.get("/answer", response_class=HTMLResponse)
-def set_cokie(q:str):
-    if q.count() > 10:
-        return "ランダム"
-    return "文章"
-
-@app.get("/playlist", response_class=HTMLResponse)
-def playlist(list:str,response: Response,request: Request,page:Union[int,None]=1,yuki: Union[str] = Cookie(None),proxy: Union[str] = Cookie(None)):
-    if not(check_cokie(yuki)):
-        return redirect("/")
-    response.set_cookie("yuki","True",max_age=60 * 60 * 24 * 7)
-    return template("search.html", {"request": request,"results":get_playlist(list,str(page)),"word":"","next":f"/playlist?list={list}","proxy":proxy})
-
-@app.get("/info", response_class=HTMLResponse)
-def viewlist(response: Response,request: Request,yuki: Union[str] = Cookie(None)):
-    global apis,apichannels,apicomments
-    if not(check_cokie(yuki)):
-        return redirect("/")
-    response.set_cookie("yuki","True",max_age=60 * 60 * 24 * 7)
-    return template("info.html",{"request": request,"Youtube_API":apis[0],"Channel_API":apichannels[0],"Comments_API":apicomments[0]})
-
 @app.get("/suggest")
 def suggest(keyword:str):
     return [i[0] for i in json.loads(requests.get(r"http://www.google.com/complete/search?client=youtube&hl=ja&ds=yt&q="+urllib.parse.quote(keyword)).text[19:-1])[1]]
 
-@app.get("/comments")
-def comments(request: Request,v:str):
-    return template("comments.html",{"request": request,"comments":get_comments(v)})
 
 @app.get("/thumbnail")
 def thumbnail(v:str):
@@ -368,87 +207,93 @@ def video(v: str, response: Response, request: Request):
         "proxy": None
     })
 
-from flask import Flask, request, jsonify
-import requests
 import json
+import requests
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import JSONResponse
 
+app = FastAPI()
 
-# --- YouTubei 突撃関数 ---
-def fetch_youtubei_data(video_id):
-    # 1. ターゲットURLの設定
-    url = "https://www.youtube.com/youtubei/v1/player"
-    print(f"url:{url}")
+# カカオマメ隊員が見つけた「勝利の鍵」URL
+# keyが含まれているので、これをベースにするよ！
+SUCCESS_URL_BASE = "https://youtubei.googleapis.com/youtubei/v1"
+YOUTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+print(f"system:Using Success Route with Key: {YOUTUBE_API_KEY}")
 
-    # 2. ヘッダーの構築（iOSアプリからのアクセスに擬装）
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-        "Origin": "https://www.youtube.com",
-        "Referer": "https://www.youtube.com/"
-    }
-    print(f"headers:{headers}")
+# --- 勝利の方程式リクエスト関数 ---
+def call_youtubei_success_route(endpoint, payload_extra):
+    # エンドポイントにkeyを付与
+    url = f"{SUCCESS_URL_BASE}/{endpoint}?key={YOUTUBE_API_KEY}"
+    print(f"target_url:{url}")
 
-    # 3. ペイロードの構築
-    # YouTubeiが要求する最低限のコンテキスト情報だよ！
+    # 成功例に基づいた最小限のコンテキスト
     payload = {
         "context": {
             "client": {
-                "clientName": "IOS",
-                "clientVersion": "19.29.1",
-                "deviceModel": "iPhone15,2",
-                "osName": "iOS",
-                "osVersion": "17.0.0",
-                "hl": "ja",
-                "gl": "JP"
+                "clientName": "WEB",
+                "clientVersion": "2.20210721.00.00"
             }
-        },
-        "videoId": video_id
+        }
     }
-    print(f"payload:{payload}")
+    payload.update(payload_extra)
+    print(f"final_payload:{payload}")
 
     try:
-        # 4. 運命のリクエスト実行
-        print(f"status:Fetching data for video_id {video_id}...")
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        print(f"status:Launching POST request to {endpoint}...")
+        # 成功例に従い、ヘッダーを極限まで削って突撃！
+        response = requests.post(url, json=payload, timeout=10)
         
         status_code = response.status_code
         print(f"status_code:{status_code}")
 
         if status_code == 200:
-            result_data = response.json()
-            # 取得できたタイトルをデバッグ出力
-            video_details = result_data.get("videoDetails", {})
-            title = video_details.get("title", "Unknown Title")
-            print(f"video_title:{title}")
-            return result_data
+            result = response.json()
+            # ログには少しだけ中身を出すよ
+            if "videoDetails" in result:
+                print(f"video_title:{result['videoDetails'].get('title')}")
+            return result
         else:
-            # 失敗した時のボディも確認できるようにしておくよ
-            error_body = response.text
-            print(f"error_body:{error_body}")
-            return {"error": "YouTubei API returned an error", "status": status_code}
-
+            print(f"error_response:{response.text}")
+            return {"error": "YouTubei error", "status": status_code, "detail": response.text}
+            
     except Exception as e:
-        error_msg = str(e)
-        print(f"exception:{error_msg}")
-        return {"error": error_msg}
+        print(f"exception:{str(e)}")
+        return {"error": str(e)}
 
-# --- 指定されたエンドポイント: /api/video/ ---
-@app.route('/api/video/', methods=['GET'])
-def get_video_info():
-    # クエリパラメータ 'id' から動画IDを取得
-    video_id = request.args.get('id')
-    print(f"requested_id:{video_id}")
+# --- 統合エンドポイント ---
+@app.get("/api/youtubei/")
+async def youtubei_api(
+    type: str = Query(..., description="video, channel, comment, search, home, 関連"),
+    id: str = Query(None),
+    q: str = Query(None)
+):
+    print(f"routing_type:{type}")
     
-    if not video_id:
-        print("status:Error - No video ID provided")
-        return jsonify({"error": "Missing 'id' parameter"}), 400
-    
-    # 実行！
-    data = fetch_youtubei_data(video_id)
-    
-    return jsonify(data)
+    if type == "video":
+        # 動画詳細
+        return call_youtubei_success_route("player", {"videoId": id})
 
-# ローカル環境でのテスト用
-if __name__ == '__main__':
-    print("status:Starting local Flask server...")
-    app.run(port=5000, debug=True)
+    elif type == "channel":
+        # チャンネル情報
+        return call_youtubei_success_route("browse", {"browseId": id})
+
+    elif type == "search":
+        # 検索
+        return call_youtubei_success_route("search", {"query": q})
+
+    elif type == "comment" or type == "関連":
+        # コメント・関連動画
+        return call_youtubei_success_route("next", {"videoId": id})
+
+    elif type == "home":
+        # ホーム画面
+        return call_youtubei_success_route("browse", {"browseId": "FEwhat_to_watch"})
+
+    else:
+        print(f"error:Invalid type {type}")
+        raise HTTPException(status_code=400, detail="Invalid type")
+
+if __name__ == "__main__":
+    import uvicorn
+    print("status:Starting local squad server...")
+    uvicorn.run(app, host="0.0.0.0", port=5000)
