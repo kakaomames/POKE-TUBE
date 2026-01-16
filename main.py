@@ -189,7 +189,9 @@ def page(request: Request,__):
 
 @app.exception_handler(APItimeoutError)
 def APIwait(request: Request,exception: APItimeoutError):
-    return template("APIwait.html",{"request": request},status_code=500)get('/watch', response_class=HTMLResponse)
+    return template("APIwait.html",{"request": request},status_code=500)
+    
+@app.get('/watch', response_class=HTMLResponse)
 def video(v: str, response: Response, request: Request):
     videoid = v
     t = get_data(videoid)
@@ -212,7 +214,7 @@ import requests
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 
-app = FastAPI()
+#¥app = FastAPI()
 
 # カカオマメ隊員が見つけた「勝利の鍵」URL
 # keyが含まれているので、これをベースにするよ！
